@@ -1,6 +1,6 @@
 -- Ring Farm Webhook Notifier (Delta/Redfinger)
 -- Ganti webhook di bawah ini
-local WH = "https://discord.com/api/webhooks/WEBHOOK_KAMU_DISINI"
+local WH = "https://discord.com/api/webhooks/1514738414837174552/hd3HQVbA3I_c9SUOKWv6FMcW3sUE2Pqvm4Jb306-qwRWerbmS1hPQyabyOciJi0eP7DN"
 
 local p = game:GetService("Players").LocalPlayer
 local hs = game:GetService("HttpService")
