@@ -1,89 +1,45 @@
--- Ring Farm Webhook Notifier (Delta/Redfinger)
--- Ganti webhook di bawah ini
+-- Ring Farm Webhook Notifier
 local WH = "https://discord.com/api/webhooks/1514738414837174552/hd3HQVbA3I_c9SUOKWv6FMcW3sUE2Pqvm4Jb306-qwRWerbmS1hPQyabyOciJi0eP7DN"
 
-local p = game:GetService("Players").LocalPlayer
+local p  = game:GetService("Players").LocalPlayer
 local hs = game:GetService("HttpService")
 
--- Counter spray
 local sc = {Rainbow=0, Cosmic=0, Bubblegum=0, Fire=0}
 local eg = 0
 
-local SEEDS   = {Transcended=3978097}
-local SPRAYS  = {Rainbow=16711680, Cosmic=4915330, Bubblegum=16716947, Fire=16729344}
-local PETS    = {Legendary=16766720, Mythical=16711935, Divine=16750848, Prismatic=16777215}
-local PEMOJI  = {Legendary="🦁", Mythical="🐉", Divine="👼", Prismatic="🌟"}
-local SEMOJI  = {Rainbow="🌈", Cosmic="🌌", Bubblegum="🫧", Fire="🔥"}
-
-local function send(t, d, c, f)
-    if WH:find("WEBHOOK_KAMU") then return end
-    pcall(function()
-        local r = {Url=WH, Method="POST",
-            Headers={["Content-Type"]="application/json"},
-            Body=hs:JSONEncode({username="🌱 Ring Farm", embeds={{
-                title=t, description=d, color=c, fields=f or {},
-                timestamp=DateTime.now():ToIsoDate(),
-                footer={text="Build A Ring Farm • "..p.Name}
-            }}})}
-        if syn and syn.request then syn.request(r)
-        elseif http_request then http_request(r)
-        elseif request then request(r) end
-    end)
+local function send(msg)
+    request({
+        Url     = WH,
+        Method  = "POST",
+        Headers = {["Content-Type"] = "application/json"},
+        Body    = '{"content": "' .. msg .. '"}'
+    })
 end
 
-local function onSeed(name, qty)
-    send("🌿 Seed Transcended Dibeli!",
-        "> **"..name.."** dibeli "..qty.."x!", 3978097, {
-        {name="🌿 Seed",   value=name,            inline=true},
-        {name="🛒 Jumlah", value=qty.."x",        inline=true},
-        {name="👤 Player", value=p.Name,           inline=true},
-    })
+local function onSeed(name)
+    send("🌿 **SEED TRANSCENDED DIBELI!**\\n> Seed: " .. name .. "\\n> Player: " .. p.Name)
 end
 
 local function onSpray(name, qty)
     sc[name] = sc[name] + qty
     local tot = sc.Rainbow + sc.Cosmic + sc.Bubblegum + sc.Fire
-    send(SEMOJI[name].." Spray "..name.." Dibeli!",
-        "> Spray **"..name.."** dibeli **"..qty.."x**!", SPRAYS[name], {
-        {name="🧴 Spray",          value=name,              inline=true},
-        {name="🛒 Dibeli",         value=qty.."x",          inline=true},
-        {name="📊 Total "..name,   value=sc[name].."x",     inline=true},
-        {name="🌈 Rainbow",        value=sc.Rainbow.."x",   inline=true},
-        {name="🌌 Cosmic",         value=sc.Cosmic.."x",    inline=true},
-        {name="🫧 Bubblegum",      value=sc.Bubblegum.."x", inline=true},
-        {name="🔥 Fire",           value=sc.Fire.."x",      inline=true},
-        {name="✨ Total Spray",    value=tot.."x",           inline=true},
-        {name="👤 Player",         value=p.Name,             inline=true},
-    })
+    send("🧴 **SPRAY " .. name:upper() .. " DIBELI " .. qty .. "x!**\\n> 🌈 Rainbow: " .. sc.Rainbow .. "x  🌌 Cosmic: " .. sc.Cosmic .. "x\\n> 🫧 Bubblegum: " .. sc.Bubblegum .. "x  🔥 Fire: " .. sc.Fire .. "x\\n> ✨ Total Semua: " .. tot .. "x\\n> 👤 Player: " .. p.Name)
 end
 
 local function onPet(pet, rar, src)
-    if not PETS[rar] then return end
-    send(PEMOJI[rar].." Pet "..rar.." Didapat!",
-        "> **"..pet.."** dari **"..(src or "Unknown").."**!", PETS[rar], {
-        {name="🐾 Pet",    value=pet,          inline=true},
-        {name="⭐ Rarity", value=rar,          inline=true},
-        {name="📦 Sumber", value=src or "?",   inline=true},
-        {name="👤 Player", value=p.Name,        inline=true},
-    })
+    local rars = {Legendary=true, Mythical=true, Divine=true, Prismatic=true}
+    if not rars[rar] then return end
+    send("🐾 **PET " .. rar:upper() .. " DIDAPAT!**\\n> Pet: " .. pet .. "\\n> Rarity: " .. rar .. "\\n> Sumber: " .. (src or "?") .. "\\n> 👤 Player: " .. p.Name)
 end
 
 local function onHatch(egg, pet, rar)
     eg = eg + 1
-    local c = PETS[rar] and PETS[rar] or 7506394
-    local e = PEMOJI[rar] or "🥚"
-    send(e.." Egg Menetas! ("..( rar or "Common")..")",
-        "> **"..(egg or "Egg").."** jadi **"..(pet or "?").."**!", c, {
-        {name="🥚 Egg",         value=egg or "?",   inline=true},
-        {name="🐾 Pet",         value=pet or "?",   inline=true},
-        {name="⭐ Rarity",      value=rar or "?",   inline=true},
-        {name="🔢 Total Hatch", value=tostring(eg), inline=true},
-        {name="👤 Player",      value=p.Name,        inline=true},
-    })
-    if PETS[rar] then onPet(pet or "?", rar, egg or "Egg") end
+    send("🥚 **EGG MENETAS #" .. eg .. "!**\\n> Egg: " .. (egg or "?") .. "\\n> Pet: " .. (pet or "?") .. "\\n> Rarity: " .. (rar or "?") .. "\\n> 👤 Player: " .. p.Name)
+    local rars = {Legendary=true, Mythical=true, Divine=true, Prismatic=true}
+    if rars[rar] then onPet(pet or "?", rar, egg or "Egg") end
 end
 
--- GUI watcher
+-- GUI Watcher
 local _w = {}
 local function wGui(o)
     if _w[o] then return end
@@ -94,25 +50,26 @@ local function wGui(o)
         local l = t:lower()
         if l:find("hatch") or l:find("menetas") then
             local rar = nil
-            for r in pairs(PETS) do if t:find(r) then rar=r break end end
+            for _,r in ipairs({"Legendary","Mythical","Divine","Prismatic"}) do
+                if t:find(r) then rar=r break end
+            end
             local pet = t:match("([A-Z][a-zA-Z]+ [A-Z][a-zA-Z]+)") or "Unknown"
             onHatch("Egg", pet, rar or "Common") return
         end
         if l:find("seed") and (l:find("purchas") or l:find("bought")) then
             if t:find("Transcended") then
                 local nm = t:match("([A-Za-z ]+[Ss]eed)") or "Transcended Seed"
-                local q = tonumber(t:match("x(%d+)") or t:match("(%d+)x")) or 1
-                onSeed(nm, q) return
+                onSeed(nm) return
             end
         end
-        for sn in pairs(SPRAYS) do
+        for _,sn in ipairs({"Rainbow","Cosmic","Bubblegum","Fire"}) do
             if t:find(sn) and (l:find("purchas") or l:find("bought") or l:find("spray")) then
                 local q = tonumber(t:match("x(%d+)") or t:match("(%d+)x")) or 1
                 onSpray(sn, q) return
             end
         end
         if l:find("you got") or l:find("new pet") or l:find("pet added") then
-            for r in pairs(PETS) do
+            for _,r in ipairs({"Legendary","Mythical","Divine","Prismatic"}) do
                 if t:find(r) then
                     local pet = t:match("([A-Z][a-zA-Z]+ [A-Z][a-zA-Z]+)") or "Unknown"
                     onPet(pet, r, "Drop") break
@@ -129,7 +86,7 @@ end
 scanG(p:WaitForChild("PlayerGui"))
 pcall(function() scanG(game:GetService("CoreGui")) end)
 
--- Remote hook
+-- Remote Hook
 task.spawn(function()
     task.wait(5)
     local hk = {}
@@ -142,8 +99,10 @@ task.spawn(function()
                     onHatch(tostring(a[1] or"Egg"),tostring(a[2] or"?"),tostring(a[3] or"Common"))
                 elseif n:find("buy") or n:find("shop") then
                     local it=tostring(a[1] or"") local q=tonumber(a[2]) or 1
-                    if it:find("Transcended") and it:lower():find("seed") then onSeed(it,q) end
-                    for sn in pairs(SPRAYS) do if it:find(sn) then onSpray(sn,q) break end end
+                    if it:find("Transcended") and it:lower():find("seed") then onSeed(it) end
+                    for _,sn in ipairs({"Rainbow","Cosmic","Bubblegum","Fire"}) do
+                        if it:find(sn) then onSpray(sn,q) break end
+                    end
                 elseif n:find("pet") then
                     onPet(tostring(a[1] or"?"),tostring(a[2] or"Common"),"Remote")
                 end
@@ -162,13 +121,5 @@ task.spawn(function()
     pcall(function() fh(workspace) end)
 end)
 
--- Startup
-task.wait(2)
-send("✅ Webhook Aktif", "Notifier siap jalan bareng CyraaHub!", 5763719, {
-    {name="👤 Player",  value=p.Name,                               inline=true},
-    {name="🌿 Seed",    value="Transcended",                        inline=true},
-    {name="🧴 Spray",   value="Rainbow/Cosmic/Bubblegum/Fire",      inline=false},
-    {name="🐾 Pet",     value="Legendary/Mythical/Divine/Prismatic",inline=false},
-    {name="🥚 Hatch",   value="Semua rarity",                       inline=true},
-})
-print("[Webhook] Aktif - "..p.Name)
+send("✅ Webhook Aktif! | Player: " .. p.Name .. " | Build A Ring Farm")
+print("[Webhook] Aktif - " .. p.Name)
