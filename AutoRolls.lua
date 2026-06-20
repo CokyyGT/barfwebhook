@@ -1,12 +1,16 @@
-local Players     = game:GetService("Players")
-local UIS         = game:GetService("UserInputService")
+-- Cleanup script lama
+if game.CoreGui:FindFirstChild("AutoRollUI") then
+    game.CoreGui.AutoRollUI:Destroy()
+end
+_G.AutoRollRunning = nil
+task.wait(0.1)
+
+local Players    = game:GetService("Players")
+local UIS        = game:GetService("UserInputService")
 local HttpService = game:GetService("HttpService")
 
-local Player = Players.LocalPlayer
-
--- ══════════════════════════════════════
---   HTTP REQUEST (multi executor)
--- ══════════════════════════════════════
+local Player  = Players.LocalPlayer
+-- HTTP request kompatibel semua executor
 local Request = request
     or http_request
     or (syn and syn.request)
@@ -14,121 +18,86 @@ local Request = request
     or (fluxus and fluxus.request)
 
 -- ══════════════════════════════════════
---   FIRE PROMPT (Delta/Synapse/dll)
+--           CONFIG
 -- ══════════════════════════════════════
-local HasFireProximity = (fireproximityprompt ~= nil)
-
-local function WalkTo(position)
-    local char = Player.Character
-    if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if not hrp or not hum then return end
-    hum:MoveTo(position)
-    local t = 0
-    while t < 5 do
-        task.wait(0.1); t = t + 0.1
-        if (hrp.Position - position).Magnitude < 5 then break end
-    end
-end
-
-local function FirePrompt(prompt)
-    if not prompt then return false end
-    if HasFireProximity then
-        local ok = pcall(fireproximityprompt, prompt, Player)
-        if not ok then ok = pcall(fireproximityprompt, prompt) end
-        return ok
-    end
-    -- Xeno dll: jalan ke posisi dulu
-    local part = prompt.Parent
-    local targetPos = nil
-    if part and part:IsA("BasePart") then
-        targetPos = part.Position
-    elseif part then
-        local bp = part:FindFirstChildOfClass("BasePart")
-        if bp then targetPos = bp.Position end
-    end
-    if targetPos then WalkTo(targetPos) end
-    local ok = pcall(function()
-        local ti = prompt.Parent:FindFirstChild("TouchInterest")
-        if ti then
-            firetouchinterest(Player.Character.HumanoidRootPart, ti, 0)
-        else error("no ti") end
-    end)
-    if ok then return true end
-    return pcall(function() prompt.Triggered:Fire(Player) end)
-end
-
--- ══════════════════════════════════════
---   CONFIG
--- ══════════════════════════════════════
-local EGG_TYPES = {
-    { name = "CommonEgg",      label = "Common Egg",      color = Color3.fromRGB(180,180,180), enabled = false },
-    { name = "RareEgg",        label = "Rare Egg",        color = Color3.fromRGB(80,130,220),  enabled = false },
-    { name = "EpicEgg",        label = "Epic Egg",        color = Color3.fromRGB(160,80,220),  enabled = false },
-    { name = "LegendaryEgg",   label = "Legendary Egg",   color = Color3.fromRGB(255,180,30),  enabled = false },
-    { name = "MythicalEgg",    label = "Mythical Egg",    color = Color3.fromRGB(220,60,60),   enabled = false },
-    { name = "DivineEgg",      label = "Divine Egg",      color = Color3.fromRGB(220,180,255), enabled = true  },
-    { name = "PrismaticEgg",   label = "Prismatic Egg",   color = Color3.fromRGB(100,220,220), enabled = true  },
+local RARITIES = {
+    { name = "Common",      color = Color3.fromRGB(180,180,180), enabled = false },
+    { name = "Uncommon",    color = Color3.fromRGB(100,200,100), enabled = false },
+    { name = "Rare",        color = Color3.fromRGB(80,130,220),  enabled = false },
+    { name = "Epic",        color = Color3.fromRGB(160,80,220),  enabled = false },
+    { name = "Legendary",   color = Color3.fromRGB(255,180,30),  enabled = false },
+    { name = "Secret",      color = Color3.fromRGB(220,60,60),   enabled = false },
+    { name = "Prismatic",   color = Color3.fromRGB(100,220,220), enabled = false },
+    { name = "Divine",      color = Color3.fromRGB(220,180,255), enabled = false },
+    { name = "Exotic",      color = Color3.fromRGB(255,140,0),   enabled = false },
+    { name = "Transcended", color = Color3.fromRGB(255,220,50),  enabled = true  },
+    { name = "Celestial",   color = Color3.fromRGB(80,180,255),  enabled = true  },
+    { name = "Eternal",     color = Color3.fromRGB(200,100,255), enabled = true  },
 }
 
-local TARGET_EGGS    = {}
-local CHECK_DELAY    = 5   -- cek tiap N detik
-local WEBHOOK_URL    = ""
-local WEBHOOK_ENABLED = false
+local TARGET_RARITIES  = {}
+local ROLL_DELAY       = 2
+local SEED_WAIT        = 6
+local WEBHOOK_URL      = ""
+local WEBHOOK_ENABLED  = false
 
-for _, e in ipairs(EGG_TYPES) do
-    TARGET_EGGS[e.name] = e.enabled
+for _, r in ipairs(RARITIES) do
+    TARGET_RARITIES[r.name] = r.enabled
 end
 
 -- ══════════════════════════════════════
---   SAVE / LOAD CONFIG
+--         CONFIG SAVE/LOAD
 -- ══════════════════════════════════════
-local CONFIG_FILE = "autoegg_config.json"
+local CONFIG_FILE = "autoroll_config.json"
 
 local function SaveConfig()
-    local eggState = {}
-    for _, e in ipairs(EGG_TYPES) do eggState[e.name] = e.enabled end
+    local rarityState = {}
+    for _, r in ipairs(RARITIES) do
+        rarityState[r.name] = r.enabled
+    end
     local data = {
-        eggs            = eggState,
-        check_delay     = CHECK_DELAY,
+        rarities        = rarityState,
+        roll_delay      = ROLL_DELAY,
+        seed_wait       = SEED_WAIT,
         webhook_url     = WEBHOOK_URL,
         webhook_enabled = WEBHOOK_ENABLED,
     }
     pcall(function()
-        if writefile then
-            writefile(CONFIG_FILE, HttpService:JSONEncode(data))
-        end
+        writefile(CONFIG_FILE, HttpService:JSONEncode(data))
     end)
 end
 
 local function LoadConfig()
-    if not readfile then return end
     local ok, raw = pcall(readfile, CONFIG_FILE)
     if not ok or not raw then return end
     local ok2, data = pcall(HttpService.JSONDecode, HttpService, raw)
     if not ok2 or not data then return end
-    if data.eggs then
-        for _, e in ipairs(EGG_TYPES) do
-            if data.eggs[e.name] ~= nil then
-                e.enabled = data.eggs[e.name]
-                TARGET_EGGS[e.name] = e.enabled
+    if data.rarities then
+        for _, r in ipairs(RARITIES) do
+            if data.rarities[r.name] ~= nil then
+                r.enabled = data.rarities[r.name]
+                TARGET_RARITIES[r.name] = r.enabled
             end
         end
     end
-    if data.check_delay     then CHECK_DELAY     = data.check_delay     end
+    if data.roll_delay      then ROLL_DELAY      = data.roll_delay      end
+    if data.seed_wait       then SEED_WAIT       = data.seed_wait       end
     if data.webhook_url     then WEBHOOK_URL     = data.webhook_url     end
     if data.webhook_enabled ~= nil then WEBHOOK_ENABLED = data.webhook_enabled end
 end
 
+-- Load saved config
 LoadConfig()
 
 -- ══════════════════════════════════════
---   STATE
+--           STATE
 -- ══════════════════════════════════════
 local Running     = false
+local TotalRolls  = 0
 local TotalBought = 0
 local StartTime   = os.time()
+local myPlot      = nil
+local rollPrompt  = nil
 
 local function GetWIB()
     local u = DateTime.now():ToUniversalTime()
@@ -142,171 +111,356 @@ local function GetUptime()
 end
 
 -- ══════════════════════════════════════
---   WEBHOOK
+--           WEBHOOK
 -- ══════════════════════════════════════
 local function SendWebhook(title, desc, color)
     if not WEBHOOK_ENABLED or WEBHOOK_URL == "" or not Request then return end
     pcall(function()
         Request({
-            Url     = WEBHOOK_URL, Method = "POST",
+            Url    = WEBHOOK_URL, Method = "POST",
             Headers = { ["Content-Type"] = "application/json" },
-            Body    = HttpService:JSONEncode({
+            Body   = HttpService:JSONEncode({
                 embeds = {{
-                    title = title, description = desc, color = color,
-                    footer = { text = "Build A Ring Farm  •  Auto Egg" },
-                    timestamp = DateTime.now():ToIsoDate()
+                    title       = title,
+                    description = desc,
+                    color       = color,
+                    footer      = { text = "Build A Ring Farm  •  Auto Roll" },
+                    timestamp   = DateTime.now():ToIsoDate()
                 }}
             })
         })
     end)
 end
 
-local function SendEggBought(eggName, podium)
-    SendWebhook("🥚  Egg Dibeli!", table.concat({
+local function SendActivated()
+    local targets = {}
+    for _, r in ipairs(RARITIES) do
+        if r.enabled then table.insert(targets, r.name) end
+    end
+    SendWebhook("🟢  Auto Roll Activated", table.concat({
         "```",
-        "🥚 Egg      : " .. eggName,
-        "🏛 Podium   : " .. podium,
-        "🛒 Total    : " .. TotalBought,
-        "⏱ Uptime   : " .. GetUptime(),
-        "🕐 Waktu    : " .. GetWIB(),
+        "👤 Player  : " .. Player.Name,
+        "🎯 Target  : " .. (#targets > 0 and table.concat(targets, ", ") or "None"),
+        "⏱ Delay   : " .. ROLL_DELAY .. "s",
+        "🕐 Waktu   : " .. GetWIB(),
         "```"
-    }, "\n"), 9699539)
+    }, "\n"), 3066993)
+end
+
+local function SendSeedFound(seedName, rarity)
+    local rarityColor = 16776960
+    for _, r in ipairs(RARITIES) do
+        if r.name == rarity then
+            rarityColor = math.floor(r.color.R*255)*65536
+                        + math.floor(r.color.G*255)*256
+                        + math.floor(r.color.B*255)
+            break
+        end
+    end
+    SendWebhook("🌟  Seed Target Ditemukan!", table.concat({
+        "🌱 **" .. seedName .. "**", "",
+        "```",
+        "✨ Rarity    : " .. rarity,
+        "🎲 Roll ke-  : " .. TotalRolls,
+        "🌱 Total Beli: " .. TotalBought,
+        "⏱ Uptime    : " .. GetUptime(),
+        "🕐 Waktu     : " .. GetWIB(),
+        "```"
+    }, "\n"), rarityColor)
+end
+
+local function SendStopped()
+    SendWebhook("🔴  Auto Roll Berhenti", table.concat({
+        "```",
+        "👤 Player      : " .. Player.Name,
+        "🎲 Total Roll  : " .. TotalRolls,
+        "🌱 Total Beli  : " .. TotalBought,
+        "⏱ Uptime      : " .. GetUptime(),
+        "🕐 Waktu       : " .. GetWIB(),
+        "```"
+    }, "\n"), 15158332)
 end
 
 -- ══════════════════════════════════════
---   SCAN PODIUMS
---   workspace > PetMerchant > Podium1Stock-Podium5Stock
---   workspace > PetMerchant > Podium1Lever-Podium5Lever
---              > PrompAttachment > EggShopPrompt
+--   UNIVERSAL FIRE PROMPT
+--   fireproximityprompt = Synapse/Delta dll
+--   Xeno ga punya → jalan ke posisi dulu
+--   lalu pakai TouchInterest / RemoteEvent
 -- ══════════════════════════════════════
-local function GetPetMerchant()
-    return workspace:FindFirstChild("PetMerchant")
-        or workspace:FindFirstChild("petmerchant")
-        or workspace:FindFirstChild("Pet Merchant")
+local HasFireProximity = (fireproximityprompt ~= nil)
+
+local function WalkTo(position)
+    local char = Player.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hrp and hum then
+        hum:MoveTo(position)
+        -- Tunggu sampe deket (max 5s)
+        local t = 0
+        while t < 5 do
+            task.wait(0.1); t = t + 0.1
+            if (hrp.Position - position).Magnitude < 5 then break end
+        end
+    end
 end
 
-local function ScanPodiums()
-    local results = {}
-    local pm = GetPetMerchant()
-    if not pm then return results end
-
-    for i = 1, 5 do
-        local stockObj = pm:FindFirstChild("Podium" .. i .. "Stock")
-        local leverObj = pm:FindFirstChild("Podium" .. i .. "Lever")
-
-        if stockObj and leverObj then
-            -- Cari nama egg dari stock object
-            local eggName = nil
-
-            -- Cek langsung nama object atau child label
-            local nameLbl = stockObj:FindFirstChild("EggName", true)
-                         or stockObj:FindFirstChild("Name", true)
-                         or stockObj:FindFirstChildWhichIsA("StringValue", true)
-            if nameLbl then
-                eggName = (nameLbl:IsA("StringValue") and nameLbl.Value)
-                       or (nameLbl:IsA("TextLabel")   and nameLbl.Text)
+local function FirePrompt(prompt)
+    if not prompt then return false end
+    if HasFireProximity then
+        -- Synapse X, Delta, Script-Ware, dll
+        return pcall(fireproximityprompt, prompt)
+    else
+        -- Xeno & executor tanpa fireproximityprompt
+        -- Jalan ke posisi prompt dulu, lalu trigger
+        local part = prompt.Parent
+        if part and part:IsA("BasePart") then
+            WalkTo(part.Position)
+        elseif part then
+            local bp = part:FindFirstChildOfClass("BasePart")
+            if bp then WalkTo(bp.Position) end
+        end
+        -- Coba trigger via TouchInterest
+        local ok = pcall(function()
+            local ti = prompt.Parent:FindFirstChild("TouchInterest")
+            if ti then
+                firetouchinterest(Player.Character.HumanoidRootPart, ti, 0)
             end
+        end)
+        if not ok then
+            -- Fallback: trigger langsung
+            ok = pcall(function()
+                prompt.Triggered:Fire(Player)
+            end)
+        end
+        return ok
+    end
+end
 
-            -- Fallback: pakai nama object stockObj sendiri
-            if not eggName or eggName == "" then
-                -- Cek semua TextLabel di descendant
-                for _, d in ipairs(stockObj:GetDescendants()) do
-                    if d:IsA("TextLabel") and d.Text ~= "" then
-                        eggName = d.Text; break
+-- ══════════════════════════════════════
+--           FIND PLOT & PROMPT
+-- ══════════════════════════════════════
+local function FindPlotAndPrompt()
+    myPlot = nil; rollPrompt = nil
+    local map = workspace:FindFirstChild("Map")
+    if not map then return false end
+    local plotsContainer = map:FindFirstChild("Plots")
+    if not plotsContainer then return false end
+    
+    -- First try: find plot dengan ownership match
+    for _, plot in ipairs(plotsContainer:GetChildren()) do
+        if not plot.Name:match("^Plot") then continue end
+        local ownerSign = plot:FindFirstChild("OwnerSign")
+        local isOwner   = false
+        if ownerSign then
+            for _, desc in ipairs(ownerSign:GetDescendants()) do
+                if desc:IsA("TextLabel") then
+                    if desc.Text:gsub("^%s*(.-)%s*$","%1") == Player.Name then
+                        isOwner = true; break
                     end
                 end
             end
-
-            -- Cari prompt di lever
-            -- Cari prompt langsung di lever atau descendants
-            local prompt = leverObj:FindFirstChildWhichIsA("ProximityPrompt", true)
-            if not prompt then
-                -- Cek attachment juga
-                local pa = leverObj:FindFirstChild("PromptAttachment")
-                          or leverObj:FindFirstChild("PrompAttachment")
-                if pa then
-                    prompt = pa:FindFirstChildWhichIsA("ProximityPrompt")
+        end
+        if isOwner then
+            myPlot = plot
+            local rp = plot:FindFirstChild("RollPlatform")
+            if rp then
+                local lv = rp:FindFirstChild("Lever")
+                if lv then
+                    local lp = lv:FindFirstChild("LevelPrompt")
+                    if lp then rollPrompt = lp:FindFirstChild("RollSeeds") end
+                    if not rollPrompt then
+                        for _, d in ipairs(lv:GetDescendants()) do
+                            if d:IsA("ProximityPrompt") then rollPrompt = d; break end
+                        end
+                    end
                 end
             end
-
-            if eggName and prompt then
-                table.insert(results, {
-                    podium  = i,
-                    eggName = eggName,
-                    prompt  = prompt,
-                    stock   = stockObj,
-                })
+            if not rollPrompt then
+                for _, d in ipairs(plot:GetDescendants()) do
+                    if d:IsA("ProximityPrompt") and
+                       (d.Name:match("Roll") or d.Name:match("Seed")) then
+                        rollPrompt = d; break
+                    end
+                end
+            end
+            if rollPrompt then return true end
+        end
+    end
+    
+    -- Fallback: jika tidak ada ownership match, cari plot pertama yang punya RollPlatform + prompt
+    for _, plot in ipairs(plotsContainer:GetChildren()) do
+        if not plot.Name:match("^Plot") then continue end
+        local rp = plot:FindFirstChild("RollPlatform")
+        if rp then
+            local lv = rp:FindFirstChild("Lever")
+            if lv then
+                local lp = lv:FindFirstChild("LevelPrompt")
+                if lp then rollPrompt = lp:FindFirstChild("RollSeeds") end
+                if not rollPrompt then
+                    for _, d in ipairs(lv:GetDescendants()) do
+                        if d:IsA("ProximityPrompt") then rollPrompt = d; break end
+                    end
+                end
+                if rollPrompt then
+                    myPlot = plot
+                    return true
+                end
             end
         end
     end
-    return results
+    
+    return false
 end
 
 -- ══════════════════════════════════════
---   UI
+--           SCAN SEEDS
 -- ══════════════════════════════════════
-if game.CoreGui:FindFirstChild("AutoEggUI") then
-    game.CoreGui.AutoEggUI:Destroy()
+local function ScanSeeds()
+    local seeds = {}
+    for _, v in ipairs(workspace:GetChildren()) do
+        local buySeed = v:FindFirstChild("BuySeed", true)
+        local rarity  = v:FindFirstChild("Rarity",  true)
+        local nameLbl = v:FindFirstChild("NameLabel", true)
+        if buySeed and rarity and nameLbl then
+            table.insert(seeds, {
+                name   = nameLbl.Text,
+                rarity = rarity.Text,
+                prompt = buySeed,
+            })
+        end
+    end
+    return seeds
+end
+
+-- ══════════════════════════════════════
+--           UI HELPERS
+-- ══════════════════════════════════════
+if game.CoreGui:FindFirstChild("AutoRollUI") then
+    game.CoreGui.AutoRollUI:Destroy()
 end
 
 local sg = Instance.new("ScreenGui")
-sg.Name          = "AutoEggUI"
+sg.Name          = "AutoRollUI"
 sg.ResetOnSpawn  = false
 sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 sg.Parent        = game.CoreGui
 
 local C = {
-    bg      = Color3.fromRGB(15,15,20),
-    surface = Color3.fromRGB(24,24,32),
-    card    = Color3.fromRGB(30,30,42),
-    border  = Color3.fromRGB(55,55,75),
-    accent  = Color3.fromRGB(99,179,237),
-    green   = Color3.fromRGB(72,199,142),
-    text    = Color3.fromRGB(225,225,235),
-    muted   = Color3.fromRGB(110,110,140),
-    red     = Color3.fromRGB(220,80,80),
-    gold    = Color3.fromRGB(255,210,60),
-    yellow  = Color3.fromRGB(255,185,40),
-    white   = Color3.fromRGB(255,255,255),
-    purple  = Color3.fromRGB(160,100,240),
+    bg      = Color3.fromRGB(15, 15, 20),
+    surface = Color3.fromRGB(24, 24, 32),
+    card    = Color3.fromRGB(30, 30, 42),
+    border  = Color3.fromRGB(55, 55, 75),
+    accent  = Color3.fromRGB(99, 179, 237),
+    green   = Color3.fromRGB(72, 199, 142),
+    text    = Color3.fromRGB(225, 225, 235),
+    muted   = Color3.fromRGB(110, 110, 140),
+    red     = Color3.fromRGB(220, 80, 80),
+    gold    = Color3.fromRGB(255, 210, 60),
+    yellow  = Color3.fromRGB(255, 185, 40),
+    white   = Color3.fromRGB(255, 255, 255),
 }
 
 local function corner(p, r)
-    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, r or 8); c.Parent = p
-end
-local function stroke(p, col, th)
-    local s = Instance.new("UIStroke"); s.Color = col or C.border; s.Thickness = th or 1; s.Parent = p; return s
-end
-local function pad(p, all)
-    local u = Instance.new("UIPadding")
-    u.PaddingLeft = UDim.new(0,all); u.PaddingRight = UDim.new(0,all)
-    u.PaddingTop  = UDim.new(0,all); u.PaddingBottom = UDim.new(0,all)
-    u.Parent = p
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, r or 8)
+    c.Parent = p
 end
 
-local UI_W   = 360
-local MINI_H = 44
+local function stroke(p, color, thick)
+    local s = Instance.new("UIStroke")
+    s.Color     = color or C.border
+    s.Thickness = thick or 1
+    s.Parent    = p
+    return s
+end
+
+local function pad(p, all, l, r, t, b)
+    local u = Instance.new("UIPadding")
+    u.PaddingLeft   = UDim.new(0, l or all or 0)
+    u.PaddingRight  = UDim.new(0, r or all or 0)
+    u.PaddingTop    = UDim.new(0, t or all or 0)
+    u.PaddingBottom = UDim.new(0, b or all or 0)
+    u.Parent        = p
+end
+
+local function mkLabel(parent, props)
+    local l = Instance.new("TextLabel")
+    l.BackgroundTransparency = 1
+    l.Font      = props.font  or Enum.Font.Gotham
+    l.TextSize  = props.size  or 11
+    l.TextColor3 = props.color or C.text
+    l.TextXAlignment = props.align or Enum.TextXAlignment.Left
+    l.TextYAlignment = Enum.TextYAlignment.Center
+    l.Size      = props.sz    or UDim2.new(1,0,0,20)
+    l.Position  = props.pos   or UDim2.new(0,0,0,0)
+    l.Text      = props.text  or ""
+    l.ZIndex    = props.z     or 1
+    l.Parent    = parent
+    return l
+end
+
+local function mkBtn(parent, props)
+    local b = Instance.new("TextButton")
+    b.BackgroundColor3 = props.bg   or C.card
+    b.BorderSizePixel  = 0
+    b.Font             = props.font or Enum.Font.GothamBold
+    b.TextSize         = props.size or 11
+    b.TextColor3       = props.color or C.white
+    b.Text             = props.text or ""
+    b.Size             = props.sz   or UDim2.new(1,0,0,30)
+    b.Position         = props.pos  or UDim2.new(0,0,0,0)
+    b.ZIndex           = props.z    or 1
+    b.AutoButtonColor  = false
+    b.Parent           = parent
+    corner(b, props.r or 8)
+    return b
+end
+
+-- ══════════════════════════════════════
+--           MAIN FRAME
+-- ══════════════════════════════════════
+local screenSize  = workspace.CurrentCamera.ViewportSize
+local isMobile    = screenSize.X < 600
+local UI_W        = isMobile and math.floor(screenSize.X * 0.88) or 380
+local MINI_H      = 44
+local SECTION_PAD = isMobile and 6 or 8
 
 local main = Instance.new("Frame")
-main.Name             = "Main"
-main.BackgroundColor3 = C.bg
-main.BorderSizePixel  = 0
-main.ClipsDescendants = true
-main.Size             = UDim2.new(0, UI_W, 0, 500)
-main.Position         = UDim2.new(0, 20, 0.5, -250)
-main.Parent           = sg
+main.Name              = "Main"
+main.BackgroundColor3  = C.bg
+main.BorderSizePixel   = 0
+main.ClipsDescendants  = true
+main.Size              = UDim2.new(0, UI_W, 0, 500)
+main.Position          = isMobile and UDim2.new(0.5, -math.floor(UI_W/2), 0.5, -250) or UDim2.new(0, 20, 0.5, -250)
+main.Parent            = sg
 corner(main, 12)
-stroke(main, C.border)
+stroke(main, C.border, 1)
 
--- Header
+-- UIScale untuk resize UI
+local uiScale = Instance.new("UIScale")
+uiScale.Scale = isMobile and 0.65 or 1.0
+uiScale.Parent = main
+
+-- Gradient overlay top
+local grad = Instance.new("UIGradient")
+grad.Color    = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(35,35,55)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(15,15,20)),
+})
+grad.Rotation = 90
+grad.Parent   = main
+
+-- ── Header ──
 local header = Instance.new("Frame")
-header.Size             = UDim2.new(1,0,0,44)
+header.Size             = UDim2.new(1, 0, 0, 44)
 header.BackgroundColor3 = C.surface
 header.BorderSizePixel  = 0
 header.ZIndex           = 20
 header.Parent           = main
 corner(header, 12)
 
+-- header bottom filler so corners only show top
 local hFill = Instance.new("Frame")
 hFill.Size             = UDim2.new(1,0,0,12)
 hFill.Position         = UDim2.new(0,0,1,-12)
@@ -315,338 +469,321 @@ hFill.BorderSizePixel  = 0
 hFill.ZIndex           = 19
 hFill.Parent           = header
 
-local titleLbl = Instance.new("TextLabel")
-titleLbl.Size             = UDim2.new(1,-90,1,0)
-titleLbl.Position         = UDim2.new(0,14,0,0)
-titleLbl.BackgroundTransparency = 1
-titleLbl.Text             = "🥚  Auto Buy Egg"
-titleLbl.TextColor3       = C.white
-titleLbl.TextSize         = 14
-titleLbl.Font             = Enum.Font.GothamBold
-titleLbl.TextXAlignment   = Enum.TextXAlignment.Left
-titleLbl.ZIndex           = 21
-titleLbl.Parent           = header
+local titleLbl = mkLabel(header, {
+    text  = "🎲  Auto Roll Seed",
+    font  = Enum.Font.GothamBold,
+    size  = isMobile and 12 or 14,
+    color = C.white,
+    sz    = UDim2.new(1,-90,1,0),
+    pos   = UDim2.new(0,14,0,0),
+    z     = 21,
+})
 
-local statusDot = Instance.new("TextLabel")
-statusDot.Size            = UDim2.new(0,12,0,12)
-statusDot.Position        = UDim2.new(0,170,0.5,-6)
-statusDot.BackgroundTransparency = 1
-statusDot.Text            = "●"
-statusDot.TextColor3      = C.muted
-statusDot.TextSize        = 10
-statusDot.Font            = Enum.Font.GothamBold
-statusDot.ZIndex          = 21
-statusDot.Parent          = header
+local statusDot = mkLabel(header, {
+    text  = "●",
+    font  = Enum.Font.GothamBold,
+    size  = 10,
+    color = C.muted,
+    sz    = UDim2.new(0,12,0,12),
+    pos   = UDim2.new(0,160,0.5,-6),
+    z     = 21,
+})
 
-local minBtn = Instance.new("TextButton")
-minBtn.Size             = UDim2.new(0,26,0,26)
-minBtn.Position         = UDim2.new(1,-60,0.5,-13)
-minBtn.BackgroundColor3 = C.border
-minBtn.BorderSizePixel  = 0
-minBtn.Text             = "—"
-minBtn.TextColor3       = C.text
-minBtn.TextSize         = 12
-minBtn.Font             = Enum.Font.GothamBold
-minBtn.ZIndex           = 21
-minBtn.Parent           = header
-corner(minBtn, 6)
-
-local closeBtn = Instance.new("TextButton")
-closeBtn.Size             = UDim2.new(0,26,0,26)
-closeBtn.Position         = UDim2.new(1,-30,0.5,-13)
-closeBtn.BackgroundColor3 = C.red
-closeBtn.BorderSizePixel  = 0
-closeBtn.Text             = "✕"
-closeBtn.TextColor3       = C.white
-closeBtn.TextSize         = 12
-closeBtn.Font             = Enum.Font.GothamBold
-closeBtn.ZIndex           = 21
-closeBtn.Parent           = header
-corner(closeBtn, 6)
-closeBtn.MouseButton1Click:Connect(function() sg:Destroy() end)
-
--- Scroll
-local scroll = Instance.new("ScrollingFrame")
-scroll.Size                   = UDim2.new(1,0,1,-44)
-scroll.Position               = UDim2.new(0,0,0,44)
-scroll.BackgroundTransparency = 1
-scroll.BorderSizePixel        = 0
-scroll.ScrollBarThickness     = 3
-scroll.ScrollBarImageColor3   = C.border
-scroll.ScrollingDirection     = Enum.ScrollingDirection.Y
-scroll.CanvasSize             = UDim2.new(0,0,0,0)
-scroll.AutomaticCanvasSize    = Enum.AutomaticSize.Y
-scroll.Parent                 = main
-
-local contentList = Instance.new("UIListLayout")
-contentList.Padding             = UDim.new(0,8)
-contentList.FillDirection       = Enum.FillDirection.Vertical
-contentList.SortOrder           = Enum.SortOrder.LayoutOrder
-contentList.HorizontalAlignment = Enum.HorizontalAlignment.Center
-contentList.Parent              = scroll
-pad(scroll, 8)
-
-contentList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-    local h = contentList.AbsoluteContentSize.Y + 16 + 44
-    main.Size = UDim2.new(0, UI_W, 0, math.min(h, 650))
+-- Scale button
+local scaleVal = isMobile and 0.65 or 1.0
+local scaleBtn = mkBtn(header, {
+    text  = "[ ]",
+    bg    = C.border,
+    color = C.text,
+    size  = 11,
+    sz    = UDim2.new(0,26,0,26),
+    pos   = UDim2.new(1,-92,0.5,-13),
+    r     = 6,
+    z     = 21,
+})
+scaleBtn.MouseButton1Click:Connect(function()
+    if scaleVal >= 1.0 then
+        scaleVal = 0.5
+    else
+        scaleVal = math.min(1.0, math.floor((scaleVal + 0.1)*10+0.5)/10)
+    end
+    uiScale.Scale = scaleVal
 end)
 
-local layoutOrder = 0
-local function mkSection(title)
-    layoutOrder = layoutOrder + 1
+local minBtn = mkBtn(header, {
+    text  = "—",
+    bg    = C.border,
+    color = C.text,
+    size  = 12,
+    sz    = UDim2.new(0,26,0,26),
+    pos   = UDim2.new(1,-62,0.5,-13),
+    r     = 6,
+    z     = 21,
+})
+
+local closeBtn = mkBtn(header, {
+    text  = "✕",
+    bg    = C.red,
+    size  = 12,
+    sz    = UDim2.new(0,26,0,26),
+    pos   = UDim2.new(1,-30,0.5,-13),
+    r     = 6,
+    z     = 21,
+})
+closeBtn.MouseButton1Click:Connect(function() sg:Destroy() end)
+
+-- ── Scroll content ──
+local scroll = Instance.new("ScrollingFrame")
+scroll.Name                    = "Scroll"
+scroll.Size                    = UDim2.new(1,0,1,-44)
+scroll.Position                = UDim2.new(0,0,0,44)
+scroll.BackgroundTransparency  = 1
+scroll.BorderSizePixel         = 0
+scroll.ScrollBarThickness      = 3
+scroll.ScrollBarImageColor3    = C.border
+scroll.ScrollingDirection      = Enum.ScrollingDirection.Y
+scroll.CanvasSize              = UDim2.new(0,0,0,0)
+scroll.AutomaticCanvasSize     = Enum.AutomaticSize.Y
+scroll.Parent                  = main
+
+local contentList = Instance.new("UIListLayout")
+contentList.Padding            = UDim.new(0, SECTION_PAD)
+contentList.FillDirection      = Enum.FillDirection.Vertical
+contentList.SortOrder          = Enum.SortOrder.LayoutOrder
+contentList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+contentList.Parent             = scroll
+pad(scroll, SECTION_PAD)
+
+-- ── Auto-resize main to content ──
+contentList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    local h = contentList.AbsoluteContentSize.Y + SECTION_PAD*2 + 44
+    local maxH = isMobile and math.floor(screenSize.Y * 0.85) or 650
+    main.Size = UDim2.new(0, UI_W, 0, math.min(h, maxH))
+end)
+
+-- ── Section helper ──
+local sectionOrder = 0
+local function mkSection(title, innerH)
+    sectionOrder = sectionOrder + 1
     local wrap = Instance.new("Frame")
     wrap.BackgroundTransparency = 1
     wrap.BorderSizePixel        = 0
-    wrap.Size                   = UDim2.new(1,-16,0,0)
+    wrap.Size                   = UDim2.new(1, -SECTION_PAD*2, 0, 0)
     wrap.AutomaticSize          = Enum.AutomaticSize.Y
-    wrap.LayoutOrder            = layoutOrder
+    wrap.LayoutOrder            = sectionOrder
     wrap.Parent                 = scroll
 
-    local wl = Instance.new("UIListLayout")
-    wl.Padding   = UDim.new(0,4)
-    wl.SortOrder = Enum.SortOrder.LayoutOrder
-    wl.Parent    = wrap
+    local wList = Instance.new("UIListLayout")
+    wList.Padding    = UDim.new(0, 4)
+    wList.SortOrder  = Enum.SortOrder.LayoutOrder
+    wList.Parent     = wrap
 
     if title then
-        local hdr = Instance.new("TextLabel")
-        hdr.Size             = UDim2.new(1,0,0,14)
-        hdr.BackgroundTransparency = 1
-        hdr.Text             = title
-        hdr.TextColor3       = C.muted
-        hdr.TextSize         = 9
-        hdr.Font             = Enum.Font.GothamBold
-        hdr.TextXAlignment   = Enum.TextXAlignment.Left
-        hdr.LayoutOrder      = 0
-        hdr.Parent           = wrap
+        local hdr = mkLabel(wrap, {
+            text  = title,
+            font  = Enum.Font.GothamBold,
+            size  = 9,
+            color = C.muted,
+            sz    = UDim2.new(1,0,0,14),
+        })
+        hdr.LayoutOrder = 0
     end
 
     local card = Instance.new("Frame")
     card.BackgroundColor3 = C.card
     card.BorderSizePixel  = 0
-    card.Size             = UDim2.new(1,0,0,0)
-    card.AutomaticSize    = Enum.AutomaticSize.Y
+    card.Size             = UDim2.new(1,0,0,innerH or 60)
+    card.AutomaticSize    = innerH and Enum.AutomaticSize.None or Enum.AutomaticSize.Y
     card.LayoutOrder      = 1
     card.Parent           = wrap
     corner(card, 10)
-    stroke(card, C.border)
-    pad(card, 10)
+    stroke(card, C.border, 1)
     return card
 end
 
--- ── Stats ──
-local statsCard = mkSection(nil)
-statsCard.AutomaticSize = Enum.AutomaticSize.None
-statsCard.Size = UDim2.new(1,0,0,54)
+-- ══════════════════════════════════════
+--         STATS SECTION
+-- ══════════════════════════════════════
+local statsCard = mkSection(nil, 54)
 
 local statsLayout = Instance.new("UIListLayout")
 statsLayout.FillDirection       = Enum.FillDirection.Horizontal
 statsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 statsLayout.VerticalAlignment   = Enum.VerticalAlignment.Center
+statsLayout.Padding             = UDim.new(0,0)
 statsLayout.Parent              = statsCard
+pad(statsCard, 0, 8, 8, 4, 4)
 
-local statBought, statUptime, statStatus
+local statRolls, statBought, statUptime
 
 local function mkStatCol(parent, label)
     local col = Instance.new("Frame")
     col.BackgroundTransparency = 1
+    col.Size                   = UDim2.new(0.333, 0, 1, 0)
     col.BorderSizePixel        = 0
-    col.Size                   = UDim2.new(0.333,0,1,0)
     col.Parent                 = parent
 
-    local cl = Instance.new("UIListLayout")
-    cl.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    cl.VerticalAlignment   = Enum.VerticalAlignment.Center
-    cl.Parent              = col
+    local colList = Instance.new("UIListLayout")
+    colList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    colList.VerticalAlignment   = Enum.VerticalAlignment.Center
+    colList.Parent              = col
 
-    local v = Instance.new("TextLabel")
-    v.Size             = UDim2.new(1,0,0,24)
-    v.BackgroundTransparency = 1
-    v.Text             = "0"
-    v.TextColor3       = C.accent
-    v.TextSize         = 20
-    v.Font             = Enum.Font.GothamBold
-    v.TextXAlignment   = Enum.TextXAlignment.Center
-    v.Parent           = col
-
-    local l = Instance.new("TextLabel")
-    l.Size             = UDim2.new(1,0,0,12)
-    l.BackgroundTransparency = 1
-    l.Text             = label
-    l.TextColor3       = C.muted
-    l.TextSize         = 8
-    l.Font             = Enum.Font.Gotham
-    l.TextXAlignment   = Enum.TextXAlignment.Center
-    l.Parent           = col
+    local v = mkLabel(col, {
+        text  = "0",
+        font  = Enum.Font.GothamBold,
+        size  = isMobile and 16 or 20,
+        color = C.accent,
+        sz    = UDim2.new(1,0,0,24),
+        align = Enum.TextXAlignment.Center,
+    })
+    mkLabel(col, {
+        text  = label,
+        size  = 8,
+        color = C.muted,
+        sz    = UDim2.new(1,0,0,12),
+        align = Enum.TextXAlignment.Center,
+    })
     return v
 end
 
+statRolls  = mkStatCol(statsCard, "TOTAL ROLL")
 statBought = mkStatCol(statsCard, "TOTAL BELI")
 statUptime = mkStatCol(statsCard, "UPTIME")
-statStatus = mkStatCol(statsCard, "STATUS")
-statStatus.Text      = "IDLE"
-statStatus.TextColor3 = C.muted
-statStatus.TextSize  = 11
 
 task.spawn(function()
     while task.wait(1) do statUptime.Text = GetUptime() end
 end)
 
--- ── Egg Target ──
-local eggCard = mkSection("TARGET EGG")
+-- ══════════════════════════════════════
+--         RARITY SECTION
+-- ══════════════════════════════════════
+local rarityCard = mkSection("TARGET RARITY")
+pad(rarityCard, 8)
 
-local eggGrid = Instance.new("UIGridLayout")
-eggGrid.CellSize            = UDim2.new(0,152,0,30)
-eggGrid.CellPadding         = UDim2.new(0,5,0,5)
-eggGrid.HorizontalAlignment = Enum.HorizontalAlignment.Center
-eggGrid.Parent              = eggCard
+local rarityGrid = Instance.new("UIGridLayout")
+local cellW = isMobile and math.floor((UI_W - 40) / 3) or 100
+rarityGrid.CellSize             = UDim2.new(0, cellW, 0, isMobile and 26 or 28)
+rarityGrid.CellPadding          = UDim2.new(0, isMobile and 4 or 5, 0, isMobile and 4 or 5)
+rarityGrid.HorizontalAlignment  = Enum.HorizontalAlignment.Center
+rarityGrid.Parent               = rarityCard
 
-for _, e in ipairs(EGG_TYPES) do
-    local btn = Instance.new("TextButton")
-    btn.Size             = UDim2.new(0,152,0,30)
-    btn.BackgroundColor3 = e.enabled and e.color or C.border
-    btn.BorderSizePixel  = 0
-    btn.Text             = e.label
-    btn.TextColor3       = e.enabled and Color3.fromRGB(15,15,15) or C.muted
-    btn.TextSize         = 10
-    btn.Font             = Enum.Font.GothamBold
-    btn.AutoButtonColor  = false
-    btn.Parent           = eggCard
-    corner(btn, 6)
-
+local rarityBtns = {}
+for _, r in ipairs(RARITIES) do
+    local btn = mkBtn(rarityCard, {
+        text  = r.name,
+        bg    = r.enabled and r.color or C.border,
+        color = r.enabled and Color3.fromRGB(15,15,15) or C.muted,
+        size  = 9,
+        r     = 6,
+    })
+    rarityBtns[r.name] = btn
     btn.MouseButton1Click:Connect(function()
-        e.enabled = not e.enabled
-        TARGET_EGGS[e.name] = e.enabled
-        btn.BackgroundColor3 = e.enabled and e.color or C.border
-        btn.TextColor3       = e.enabled and Color3.fromRGB(15,15,15) or C.muted
+        r.enabled = not r.enabled
+        TARGET_RARITIES[r.name] = r.enabled
+        btn.BackgroundColor3 = r.enabled and r.color or C.border
+        btn.TextColor3       = r.enabled and Color3.fromRGB(15,15,15) or C.muted
         SaveConfig()
     end)
 end
 
--- ── Podium Monitor ──
-local podiumCard = mkSection("PODIUM STATUS")
-local podiumLabels = {}
+-- dummy filler so grid height is right (12 items, 3 col = 4 rows)
+task.defer(function()
+    local rows = math.ceil(#RARITIES / 3)
+    local cellH = isMobile and 26 or 28
+    local cellGap = isMobile and 4 or 5
+    rarityCard.Size = UDim2.new(1, 0, 0, rows * cellH + (rows-1)*cellGap + 16)
+end)
 
-local podiumList = Instance.new("UIListLayout")
-podiumList.Padding   = UDim.new(0,4)
-podiumList.SortOrder = Enum.SortOrder.LayoutOrder
-podiumList.Parent    = podiumCard
-
-for i = 1, 5 do
-    local row = Instance.new("Frame")
-    row.BackgroundTransparency = 1
-    row.BorderSizePixel        = 0
-    row.Size                   = UDim2.new(1,0,0,22)
-    row.LayoutOrder            = i
-    row.Parent                 = podiumCard
-
-    local lbl = Instance.new("TextLabel")
-    lbl.Size           = UDim2.new(0.4,0,1,0)
-    lbl.BackgroundTransparency = 1
-    lbl.Text           = "Podium " .. i
-    lbl.TextColor3     = C.muted
-    lbl.TextSize       = 10
-    lbl.Font           = Enum.Font.GothamBold
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.Parent         = row
-
-    local val = Instance.new("TextLabel")
-    val.Size           = UDim2.new(0.6,0,1,0)
-    val.Position       = UDim2.new(0.4,0,0,0)
-    val.BackgroundTransparency = 1
-    val.Text           = "—"
-    val.TextColor3     = C.muted
-    val.TextSize       = 10
-    val.Font           = Enum.Font.Gotham
-    val.TextXAlignment = Enum.TextXAlignment.Left
-    val.Parent         = row
-
-    podiumLabels[i] = val
-end
-
--- ── Settings ──
+-- ══════════════════════════════════════
+--         SETTINGS SECTION
+-- ══════════════════════════════════════
 local settCard = mkSection("SETTINGS")
+pad(settCard, 10)
 
 local settList = Instance.new("UIListLayout")
-settList.Padding   = UDim.new(0,8)
+settList.Padding   = UDim.new(0, 8)
 settList.SortOrder = Enum.SortOrder.LayoutOrder
 settList.Parent    = settCard
 
-local function mkSlider(parent, label, default, minV, maxV, step, onChange, order)
+-- Slider row
+local sliderOrder = 0
+local function mkSlider(parent, label, default, minV, maxV, step, onChange)
+    sliderOrder = sliderOrder + 1
     local row = Instance.new("Frame")
     row.BackgroundTransparency = 1
     row.BorderSizePixel        = 0
     row.Size                   = UDim2.new(1,0,0,28)
-    row.LayoutOrder            = order or 1
+    row.LayoutOrder            = sliderOrder
     row.Parent                 = parent
 
-    local lbl = Instance.new("TextLabel")
-    lbl.Size             = UDim2.new(0.55,0,1,0)
-    lbl.BackgroundTransparency = 1
-    lbl.Text             = label
-    lbl.TextColor3       = C.text
-    lbl.TextSize         = 10
-    lbl.Font             = Enum.Font.Gotham
-    lbl.TextXAlignment   = Enum.TextXAlignment.Left
-    lbl.Parent           = row
+    mkLabel(row, {
+        text  = label,
+        size  = 10,
+        color = C.text,
+        sz    = UDim2.new(0.55,0,1,0),
+    })
 
-    local minus = Instance.new("TextButton")
-    minus.Size             = UDim2.new(0,26,0,22)
-    minus.Position         = UDim2.new(1,-78,0.5,-11)
-    minus.BackgroundColor3 = C.surface
-    minus.BorderSizePixel  = 0
-    minus.Text             = "−"
-    minus.TextColor3       = C.text
-    minus.TextSize         = 15
-    minus.Font             = Enum.Font.GothamBold
-    minus.AutoButtonColor  = false
-    minus.Parent           = row
-    corner(minus, 6); stroke(minus, C.border)
+    local minus = mkBtn(row, {
+        text  = "−",
+        bg    = C.surface,
+        size  = 15,
+        sz    = UDim2.new(0,26,0,22),
+        pos   = UDim2.new(1,-78,0.5,-11),
+        r     = 6,
+    })
+    stroke(minus, C.border)
 
-    local valLbl = Instance.new("TextLabel")
-    valLbl.Size             = UDim2.new(0,28,0,22)
-    valLbl.Position         = UDim2.new(1,-50,0.5,-11)
-    valLbl.BackgroundTransparency = 1
-    valLbl.Text             = tostring(default)
-    valLbl.TextColor3       = C.accent
-    valLbl.TextSize         = 11
-    valLbl.Font             = Enum.Font.GothamBold
-    valLbl.TextXAlignment   = Enum.TextXAlignment.Center
-    valLbl.Parent           = row
+    local valLbl = mkLabel(row, {
+        text  = tostring(default),
+        font  = Enum.Font.GothamBold,
+        size  = 11,
+        color = C.accent,
+        sz    = UDim2.new(0,28,0,22),
+        pos   = UDim2.new(1,-50,0.5,-11),
+        align = Enum.TextXAlignment.Center,
+    })
 
-    local plus = Instance.new("TextButton")
-    plus.Size             = UDim2.new(0,26,0,22)
-    plus.Position         = UDim2.new(1,-22,0.5,-11)
-    plus.BackgroundColor3 = C.surface
-    plus.BorderSizePixel  = 0
-    plus.Text             = "+"
-    plus.TextColor3       = C.text
-    plus.TextSize         = 15
-    plus.Font             = Enum.Font.GothamBold
-    plus.AutoButtonColor  = false
-    plus.Parent           = row
-    corner(plus, 6); stroke(plus, C.border)
+    local plus = mkBtn(row, {
+        text  = "+",
+        bg    = C.surface,
+        size  = 15,
+        sz    = UDim2.new(0,26,0,22),
+        pos   = UDim2.new(1,-22,0.5,-11),
+        r     = 6,
+    })
+    stroke(plus, C.border)
 
     local cur = default
     minus.MouseButton1Click:Connect(function()
-        cur = math.max(minV, math.round((cur-step)*10)/10)
-        valLbl.Text = tostring(cur); onChange(cur); SaveConfig()
+        cur = math.max(minV, math.round((cur - step)*10)/10)
+        valLbl.Text = tostring(cur)
+        onChange(cur)
+        SaveConfig()
     end)
     plus.MouseButton1Click:Connect(function()
-        cur = math.min(maxV, math.round((cur+step)*10)/10)
-        valLbl.Text = tostring(cur); onChange(cur); SaveConfig()
+        cur = math.min(maxV, math.round((cur + step)*10)/10)
+        valLbl.Text = tostring(cur)
+        onChange(cur)
+        SaveConfig()
     end)
     return valLbl
 end
 
-local delayVal = mkSlider(settCard, "Check Delay (detik)", CHECK_DELAY, 1, 30, 1,
-    function(v) CHECK_DELAY = v end, 1)
-delayVal.Text = tostring(CHECK_DELAY)
+local rollDelayVal = mkSlider(settCard, "Roll Delay (detik)", ROLL_DELAY, 0.5, 15, 0.5, function(v) ROLL_DELAY = v end)
+local seedWaitVal  = mkSlider(settCard, "Seed Wait (detik)",  SEED_WAIT,  1,   15, 0.5, function(v) SEED_WAIT  = v end)
 
--- ── Webhook ──
+-- sync display with loaded config
+rollDelayVal.Text = tostring(ROLL_DELAY)
+seedWaitVal.Text  = tostring(SEED_WAIT)
+
+-- ══════════════════════════════════════
+--         WEBHOOK SECTION
+-- ══════════════════════════════════════
 local whCard = mkSection("DISCORD WEBHOOK")
+pad(whCard, 10)
 
 local whList = Instance.new("UIListLayout")
-whList.Padding   = UDim.new(0,6)
+whList.Padding   = UDim.new(0, 6)
 whList.SortOrder = Enum.SortOrder.LayoutOrder
 whList.Parent    = whCard
 
@@ -681,46 +818,34 @@ togHit.Text               = ""
 togHit.ZIndex             = 5
 togHit.Parent             = togBg
 
-local togLbl = Instance.new("TextLabel")
-togLbl.Size           = UDim2.new(1,-50,1,0)
-togLbl.Position       = UDim2.new(0,44,0,0)
-togLbl.BackgroundTransparency = 1
-togLbl.Text           = "Aktifkan notif Discord"
-togLbl.TextColor3     = C.muted
-togLbl.TextSize       = 10
-togLbl.Font           = Enum.Font.Gotham
-togLbl.TextXAlignment = Enum.TextXAlignment.Left
-togLbl.Parent         = togRow
+mkLabel(togRow, {
+    text  = "Aktifkan notif Discord",
+    size  = 10,
+    color = C.muted,
+    sz    = UDim2.new(1,-50,1,0),
+    pos   = UDim2.new(0,44,0,0),
+})
 
-local whStatusLbl = Instance.new("TextLabel")
-whStatusLbl.Size           = UDim2.new(0,32,1,0)
-whStatusLbl.Position       = UDim2.new(1,-32,0,0)
-whStatusLbl.BackgroundTransparency = 1
-whStatusLbl.Text           = "OFF"
-whStatusLbl.TextColor3     = C.muted
-whStatusLbl.TextSize       = 9
-whStatusLbl.Font           = Enum.Font.GothamBold
-whStatusLbl.TextXAlignment = Enum.TextXAlignment.Right
-whStatusLbl.Parent         = togRow
+local whStatusLbl = mkLabel(togRow, {
+    text  = "OFF",
+    font  = Enum.Font.GothamBold,
+    size  = 9,
+    color = C.muted,
+    sz    = UDim2.new(0,32,1,0),
+    pos   = UDim2.new(1,-32,0,0),
+    align = Enum.TextXAlignment.Right,
+})
 
--- URL input
+-- URL label
 local urlLblRow = Instance.new("Frame")
 urlLblRow.BackgroundTransparency = 1
 urlLblRow.BorderSizePixel        = 0
 urlLblRow.Size                   = UDim2.new(1,0,0,14)
 urlLblRow.LayoutOrder            = 2
 urlLblRow.Parent                 = whCard
+mkLabel(urlLblRow, {text="Webhook URL", size=9, color=C.muted})
 
-local urlLbl2 = Instance.new("TextLabel")
-urlLbl2.Size           = UDim2.new(1,0,1,0)
-urlLbl2.BackgroundTransparency = 1
-urlLbl2.Text           = "Webhook URL"
-urlLbl2.TextColor3     = C.muted
-urlLbl2.TextSize       = 9
-urlLbl2.Font           = Enum.Font.Gotham
-urlLbl2.TextXAlignment = Enum.TextXAlignment.Left
-urlLbl2.Parent         = urlLblRow
-
+-- URL TextBox
 local urlBoxRow = Instance.new("Frame")
 urlBoxRow.BackgroundTransparency = 1
 urlBoxRow.BorderSizePixel        = 0
@@ -729,25 +854,24 @@ urlBoxRow.LayoutOrder            = 3
 urlBoxRow.Parent                 = whCard
 
 local urlBox = Instance.new("TextBox")
-urlBox.Size             = UDim2.new(1,0,1,0)
-urlBox.BackgroundColor3 = C.surface
-urlBox.BorderSizePixel  = 0
-urlBox.Text             = WEBHOOK_URL
-urlBox.PlaceholderText  = "https://discord.com/api/webhooks/..."
-urlBox.PlaceholderColor3 = C.border
-urlBox.TextColor3       = C.text
-urlBox.TextSize         = 9
-urlBox.Font             = Enum.Font.Gotham
-urlBox.TextXAlignment   = Enum.TextXAlignment.Left
-urlBox.ClearTextOnFocus = false
-urlBox.ClipsDescendants = true
-urlBox.Parent           = urlBoxRow
+urlBox.Size               = UDim2.new(1,0,1,0)
+urlBox.BackgroundColor3   = C.surface
+urlBox.BorderSizePixel    = 0
+urlBox.Text               = WEBHOOK_URL
+urlBox.PlaceholderText    = "https://discord.com/api/webhooks/..."
+urlBox.PlaceholderColor3  = C.border
+urlBox.TextColor3         = C.text
+urlBox.TextSize           = 9
+urlBox.Font               = Enum.Font.Gotham
+urlBox.TextXAlignment     = Enum.TextXAlignment.Left
+urlBox.ClearTextOnFocus   = false
+urlBox.ClipsDescendants   = true
+urlBox.Parent             = urlBoxRow
 corner(urlBox, 6)
-local urlPad = Instance.new("UIPadding")
-urlPad.PaddingLeft = UDim.new(0,8); urlPad.Parent = urlBox
+pad(urlBox, 0, 8, 8, 0, 0)
 local urlStroke = stroke(urlBox, C.border)
 
--- Buttons
+-- Buttons row
 local whBtnRow = Instance.new("Frame")
 whBtnRow.BackgroundTransparency = 1
 whBtnRow.BorderSizePixel        = 0
@@ -762,25 +886,25 @@ whBtnList.VerticalAlignment   = Enum.VerticalAlignment.Center
 whBtnList.Padding             = UDim.new(0,6)
 whBtnList.Parent              = whBtnRow
 
-local function mkSmallBtn(parent, text, bg, col)
-    local b = Instance.new("TextButton")
-    b.Size             = UDim2.new(0.5,-3,1,0)
-    b.BackgroundColor3 = bg or C.surface
-    b.BorderSizePixel  = 0
-    b.Text             = text
-    b.TextColor3       = col or C.white
-    b.TextSize         = 10
-    b.Font             = Enum.Font.GothamBold
-    b.AutoButtonColor  = false
-    b.Parent           = parent
-    corner(b, 7)
-    return b
-end
+local saveBtn = mkBtn(whBtnRow, {
+    text  = "💾  Simpan",
+    bg    = C.green,
+    size  = 10,
+    sz    = UDim2.new(0.5,-3,1,0),
+    r     = 7,
+})
 
-local saveBtn = mkSmallBtn(whBtnRow, "💾  Simpan", C.green)
-local testBtn = mkSmallBtn(whBtnRow, "🔔  Test",   C.surface, C.text)
+local testBtn = mkBtn(whBtnRow, {
+    text  = "🔔  Test",
+    bg    = C.surface,
+    color = C.text,
+    size  = 10,
+    sz    = UDim2.new(0.5,-3,1,0),
+    r     = 7,
+})
 stroke(testBtn, C.border)
 
+-- Webhook logic
 local function IsValidWebhook(url)
     return type(url)=="string"
         and url:match("^https://discord%.com/api/webhooks/%d+/.+") ~= nil
@@ -788,29 +912,30 @@ end
 
 local function UpdateWhStatus()
     if not WEBHOOK_ENABLED then
-        whStatusLbl.Text        = "OFF"
-        whStatusLbl.TextColor3  = C.muted
-        togBg.BackgroundColor3  = C.border
-        togCircle.Position      = UDim2.new(0,3,0.5,-6)
+        whStatusLbl.Text       = "OFF"
+        whStatusLbl.TextColor3 = C.muted
+        togBg.BackgroundColor3 = C.border
+        togCircle.Position     = UDim2.new(0,3,0.5,-6)
         togCircle.BackgroundColor3 = C.muted
-        urlStroke.Color         = C.border
+        urlStroke.Color        = C.border
     elseif not IsValidWebhook(WEBHOOK_URL) then
-        whStatusLbl.Text        = "⚠"
-        whStatusLbl.TextColor3  = C.yellow
-        urlStroke.Color         = C.yellow
+        whStatusLbl.Text       = "⚠"
+        whStatusLbl.TextColor3 = C.yellow
+        urlStroke.Color        = C.yellow
     else
-        whStatusLbl.Text        = "ON"
-        whStatusLbl.TextColor3  = C.green
-        togBg.BackgroundColor3  = C.green
-        togCircle.Position      = UDim2.new(0,21,0.5,-6)
+        whStatusLbl.Text       = "ON"
+        whStatusLbl.TextColor3 = C.green
+        togBg.BackgroundColor3 = C.green
+        togCircle.Position     = UDim2.new(0,21,0.5,-6)
         togCircle.BackgroundColor3 = C.white
-        urlStroke.Color         = C.green
+        urlStroke.Color        = C.green
     end
 end
 
 togHit.MouseButton1Click:Connect(function()
     WEBHOOK_ENABLED = not WEBHOOK_ENABLED
-    UpdateWhStatus(); SaveConfig()
+    UpdateWhStatus()
+    SaveConfig()
 end)
 
 saveBtn.MouseButton1Click:Connect(function()
@@ -820,52 +945,70 @@ saveBtn.MouseButton1Click:Connect(function()
         saveBtn.Text = "✅  Tersimpan!"
         saveBtn.BackgroundColor3 = C.green
         SaveConfig()
+        task.delay(1.5, function()
+            saveBtn.Text = "💾  Simpan"
+            saveBtn.BackgroundColor3 = C.green
+        end)
     else
         saveBtn.Text = "❌  URL Salah"
         saveBtn.BackgroundColor3 = C.red
+        task.delay(1.5, function()
+            saveBtn.Text = "💾  Simpan"
+            saveBtn.BackgroundColor3 = C.green
+        end)
     end
     UpdateWhStatus()
-    task.delay(1.5, function()
-        saveBtn.Text = "💾  Simpan"
-        saveBtn.BackgroundColor3 = C.green
-    end)
 end)
 
 testBtn.MouseButton1Click:Connect(function()
     if not IsValidWebhook(WEBHOOK_URL) then
-        testBtn.Text = "❌ Set URL dulu!"; testBtn.BackgroundColor3 = C.red
-        task.delay(1.5, function() testBtn.Text="🔔  Test"; testBtn.BackgroundColor3=C.surface end)
+        testBtn.Text = "❌ Set URL dulu!"
+        testBtn.BackgroundColor3 = C.red
+        task.delay(1.5, function()
+            testBtn.Text = "🔔  Test"
+            testBtn.BackgroundColor3 = C.surface
+        end)
         return
     end
-    testBtn.Text = "⏳ ..."; testBtn.BackgroundColor3 = C.yellow
+    testBtn.Text = "⏳ Mengirim..."
+    testBtn.BackgroundColor3 = C.yellow
     local ok = pcall(function()
         Request({
             Url = WEBHOOK_URL, Method = "POST",
             Headers = { ["Content-Type"] = "application/json" },
             Body = HttpService:JSONEncode({ embeds = {{
                 title = "🔔  Webhook Test",
-                description = "```\n✅ Terhubung!\n👤 Player : "..Player.Name.."\n🕐 Waktu  : "..GetWIB().."\n```",
+                description = table.concat({
+                    "```",
+                    "✅ Terhubung!",
+                    "👤 Player : " .. Player.Name,
+                    "🕐 Waktu  : " .. GetWIB(),
+                    "```"
+                }, "\n"),
                 color = 3066993,
-                footer = { text = "Build A Ring Farm  •  Auto Egg" },
+                footer = { text = "Build A Ring Farm  •  Auto Roll" },
                 timestamp = DateTime.now():ToIsoDate()
             }}})
         })
     end)
     testBtn.Text = ok and "✅ Berhasil!" or "❌ Gagal!"
     testBtn.BackgroundColor3 = ok and C.green or C.red
-    task.delay(1.5, function() testBtn.Text="🔔  Test"; testBtn.BackgroundColor3=C.surface end)
+    task.delay(1.5, function()
+        testBtn.Text = "🔔  Test"
+        testBtn.BackgroundColor3 = C.surface
+    end)
 end)
 
 UpdateWhStatus()
 
--- ── Log ──
-local logCard = mkSection("LOG")
-logCard.AutomaticSize = Enum.AutomaticSize.None
-logCard.Size = UDim2.new(1,0,0,70)
+-- ══════════════════════════════════════
+--         LOG SECTION
+-- ══════════════════════════════════════
+local logCard = mkSection("LOG", 70)
 
 local logScroll = Instance.new("ScrollingFrame")
-logScroll.Size                   = UDim2.new(1,-10,1,-10)
-logScroll.Position               = UDim2.new(0,5,0,5)
+logScroll.Size                   = UDim2.new(1,-16,1,-10)
+logScroll.Position               = UDim2.new(0,8,0,5)
 logScroll.BackgroundTransparency = 1
 logScroll.BorderSizePixel        = 0
 logScroll.ScrollBarThickness     = 2
@@ -873,74 +1016,80 @@ logScroll.ScrollBarImageColor3   = C.border
 logScroll.CanvasSize             = UDim2.new(0,0,0,0)
 logScroll.Parent                 = logCard
 
-local logList2 = Instance.new("UIListLayout")
-logList2.Padding  = UDim.new(0,2)
-logList2.SortOrder = Enum.SortOrder.LayoutOrder
-logList2.Parent   = logScroll
+local logList = Instance.new("UIListLayout")
+logList.Padding  = UDim.new(0,2)
+logList.SortOrder = Enum.SortOrder.LayoutOrder
+logList.Parent   = logScroll
 
-logList2:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-    logScroll.CanvasSize     = UDim2.new(0,0,0,logList2.AbsoluteContentSize.Y)
-    logScroll.CanvasPosition = Vector2.new(0, logList2.AbsoluteContentSize.Y)
+logList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    logScroll.CanvasSize     = UDim2.new(0,0,0,logList.AbsoluteContentSize.Y)
+    logScroll.CanvasPosition = Vector2.new(0, logList.AbsoluteContentSize.Y)
 end)
 
-local logOrder2 = 0
+local logOrder = 0
 local function addLog(msg, color)
+    -- prune old
     local children = logScroll:GetChildren()
     local count = 0
     for _, c in ipairs(children) do if c:IsA("TextLabel") then count=count+1 end end
     if count > 40 then
-        for _, c in ipairs(children) do if c:IsA("TextLabel") then c:Destroy(); break end end
+        for _, c in ipairs(children) do
+            if c:IsA("TextLabel") then c:Destroy(); break end
+        end
     end
-    logOrder2 = logOrder2 + 1
+    logOrder = logOrder + 1
     local l = Instance.new("TextLabel")
-    l.Size             = UDim2.new(1,0,0,12)
+    l.Size                = UDim2.new(1,0,0,12)
     l.BackgroundTransparency = 1
-    l.Text             = "["..GetWIB().."] "..msg
-    l.TextColor3       = color or C.muted
-    l.TextSize         = 9
-    l.Font             = Enum.Font.Gotham
-    l.TextXAlignment   = Enum.TextXAlignment.Left
-    l.LayoutOrder      = logOrder2
-    l.Parent           = logScroll
+    l.Text                = "[" .. GetWIB() .. "] " .. msg
+    l.TextColor3          = color or C.muted
+    l.TextSize            = 9
+    l.Font                = Enum.Font.Gotham
+    l.TextXAlignment      = Enum.TextXAlignment.Left
+    l.LayoutOrder         = logOrder
+    l.Parent              = logScroll
 end
 
--- ── Run Button ──
-layoutOrder = layoutOrder + 1
+-- ══════════════════════════════════════
+--         RUN BUTTON
+-- ══════════════════════════════════════
+sectionOrder = sectionOrder + 1
 local runWrap = Instance.new("Frame")
 runWrap.BackgroundTransparency = 1
 runWrap.BorderSizePixel        = 0
-runWrap.Size                   = UDim2.new(1,-16,0,38)
-runWrap.LayoutOrder            = layoutOrder
+runWrap.Size                   = UDim2.new(1,-SECTION_PAD*2,0,38)
+runWrap.LayoutOrder            = sectionOrder
 runWrap.Parent                 = scroll
 
-local runBtn = Instance.new("TextButton")
-runBtn.Size             = UDim2.new(1,0,1,0)
-runBtn.BackgroundColor3 = C.green
-runBtn.BorderSizePixel  = 0
-runBtn.Text             = "▶  Mulai Auto Buy Egg"
-runBtn.TextColor3       = C.white
-runBtn.TextSize         = 13
-runBtn.Font             = Enum.Font.GothamBold
-runBtn.AutoButtonColor  = false
-runBtn.Parent           = runWrap
-corner(runBtn, 10)
+local runBtn = mkBtn(runWrap, {
+    text  = "▶  Mulai Auto Roll",
+    bg    = C.green,
+    size  = 13,
+    sz    = UDim2.new(1,0,1,0),
+    r     = 10,
+})
 
--- ── Drag ──
+-- ══════════════════════════════════════
+--           DRAG
+-- ══════════════════════════════════════
 local dragging, dragStart, startPos
-header.InputBegan:Connect(function(inp)
-    if inp.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = true; dragStart = inp.Position; startPos = main.Position
-    end
+header.MouseButton1Down:Connect(function()
+    dragging  = true
+    dragStart = UIS:GetMouseLocation()
+    startPos  = main.Position
 end)
 UIS.InputChanged:Connect(function(inp)
     if dragging and inp.UserInputType == Enum.UserInputType.MouseMovement then
-        local d = inp.Position - dragStart
-        main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset+d.X,
-                                   startPos.Y.Scale, startPos.Y.Offset+d.Y)
+        local d = UIS:GetMouseLocation() - dragStart
+        main.Position = UDim2.new(
+            startPos.X.Scale, startPos.X.Offset + d.X,
+            startPos.Y.Scale, startPos.Y.Offset + d.Y)
     end
 end)
 UIS.InputEnded:Connect(function(inp)
-    if inp.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+    if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
+    end
 end)
 
 -- ── Minimize ──
@@ -951,83 +1100,263 @@ minBtn.MouseButton1Click:Connect(function()
     if minimized then
         main.Size = UDim2.new(0, UI_W, 0, MINI_H)
     else
-        local h = contentList.AbsoluteContentSize.Y + 16 + 44
-        main.Size = UDim2.new(0, UI_W, 0, math.min(h, 650))
+        local h = contentList.AbsoluteContentSize.Y + SECTION_PAD*2 + 44
+        local maxH2 = isMobile and math.floor(screenSize.Y * 0.85) or 650
+        main.Size = UDim2.new(0, UI_W, 0, math.min(h, maxH2))
     end
     minBtn.Text = minimized and "+" or "—"
 end)
 
 -- ══════════════════════════════════════
---   MAIN LOOP
+--           MAIN LOOP
 -- ══════════════════════════════════════
+local function TryBuySeeds(logFn, maxAttempts, waitPerAttempt)
+    local bought        = false
+    local alreadyBought = {}
+    maxAttempts    = maxAttempts    or 12
+    waitPerAttempt = waitPerAttempt or 1
+
+    for attempt = 1, maxAttempts do
+        if not Running then break end
+
+        local seeds    = ScanSeeds()
+        local foundAny = false
+
+        for _, seed in ipairs(seeds) do
+            if TARGET_RARITIES[seed.rarity] and not alreadyBought[seed.name] then
+                foundAny = true
+                logFn("🌟 " .. seed.name .. " [" .. seed.rarity .. "]!", C.gold)
+                local buyOk = false
+                for _fire = 1, 5 do
+                    local ok2, _ = FirePrompt(seed.prompt)
+                    if ok2 then buyOk = true end
+                    task.wait(0.1)
+                end
+                if buyOk then
+                    alreadyBought[seed.name] = true
+                    TotalBought = TotalBought + 1
+                    statBought.Text = tostring(TotalBought)
+                    logFn("✅ Beli " .. seed.name, C.green)
+                    SendSeedFound(seed.name, seed.rarity)
+                    bought = true
+                else
+                    logFn("⚠ Gagal beli " .. seed.name .. " (#"..attempt..")", C.yellow)
+                end
+            end
+        end
+
+        if not foundAny and attempt >= 2 then break end
+        if attempt < maxAttempts then task.wait(waitPerAttempt) end
+    end
+    return bought
+end
+
+-- ══════════════════════════════════════
+--   Monitor workspace sampai semua plot
+--   berhenti ngacak seed (nama stabil)
+-- ══════════════════════════════════════
+
+-- Ambil snapshot nama+rarity semua seed yang ada sekarang
+local function SnapshotSeeds()
+    local snap = {}
+    for _, v in ipairs(workspace:GetChildren()) do
+        local buySeed = v:FindFirstChild("BuySeed", true)
+        local rarity  = v:FindFirstChild("Rarity",  true)
+        local nameLbl = v:FindFirstChild("NameLabel", true)
+        if buySeed and rarity and nameLbl then
+            table.insert(snap, nameLbl.Text .. "|" .. rarity.Text)
+        end
+    end
+    table.sort(snap)
+    return table.concat(snap, ",")
+end
+
+local function WaitWorkspaceStable()
+    -- Tunggu sampai snapshot nama+rarity seed tidak berubah
+    -- selama 5x berturut (1s) = semua plot berhenti ngacak
+    -- Max tunggu total 12s
+    local elapsed  = 0
+    local prevSnap = ""
+    local sameFor  = 0
+
+    while elapsed < 12 do
+        task.wait(0.2); elapsed = elapsed + 0.2
+        local snap = SnapshotSeeds()
+        if snap == prevSnap and snap ~= "" then
+            sameFor = sameFor + 1
+            if sameFor >= 5 then return end  -- 1s stabil = beneran berhenti ngacak
+        else
+            sameFor  = 0
+            prevSnap = snap
+        end
+    end
+end
+
 local function RunLoop()
-    local pm = GetPetMerchant()
-    if not pm then
-        addLog("❌ PetMerchant tidak ditemukan!", C.red)
+    if not FindPlotAndPrompt() then
+        addLog("❌ Plot/RollSeeds tidak ditemukan!", C.red)
         Running = false
-        runBtn.Text = "▶  Mulai Auto Buy Egg"
+        runBtn.Text = "▶  Mulai Auto Roll"
         runBtn.BackgroundColor3 = C.green
         statusDot.TextColor3    = C.muted
-        statStatus.Text         = "IDLE"
-        statStatus.TextColor3   = C.muted
         return
     end
 
-    addLog("✅ PetMerchant ditemukan!", C.green)
-    addLog("Auto Buy Egg dimulai!", C.accent)
+    addLog("✅ Plot: " .. myPlot.Name, C.green)
+    addLog("Auto roll dimulai!", C.accent)
+    SendActivated()
 
-    while Running do
-        local podiums = ScanPodiums()
+    local BONUS_OBJECTS = {"2xClover","4xClover","8xClover","16xClover","Jackpot","jackpot"}
 
-        -- Update podium status di UI
-        for i = 1, 5 do
-            podiumLabels[i].Text      = "—"
-            podiumLabels[i].TextColor3 = C.muted
+    local function FindBonusObject()
+        for _, name in ipairs(BONUS_OBJECTS) do
+            local obj = workspace:FindFirstChild(name)
+            if obj then return obj.Name end
         end
+        return nil
+    end
 
-        local foundTarget = false
-        for _, p in ipairs(podiums) do
-            -- Cek apakah egg ini target
-            local isTarget = false
-            for _, e in ipairs(EGG_TYPES) do
-                if p.eggName:find(e.name) or e.name:find(p.eggName) or
-                   p.eggName:lower():find(e.label:lower()) then
-                    if e.enabled then isTarget = true end
+    local function BuySeedList(seedList)
+        local gotTarget = false
+        for _, seed in ipairs(seedList) do
+            if TARGET_RARITIES[seed.rarity] then
+                addLog("🌟 " .. seed.name .. " [" .. seed.rarity .. "]!", C.gold)
+                local buyOk = false
+                for _fire = 1, 5 do
+                    local ok2, _ = FirePrompt(seed.prompt)
+                    if ok2 then buyOk = true end
+                    task.wait(0.1)
                 end
-            end
-            -- Direct name match
-            if TARGET_EGGS[p.eggName] then isTarget = true end
-
-            -- Update podium label
-            if podiumLabels[p.podium] then
-                podiumLabels[p.podium].Text      = p.eggName .. (isTarget and " ⭐" or "")
-                podiumLabels[p.podium].TextColor3 = isTarget and C.gold or C.text
-            end
-
-            if isTarget then
-                foundTarget = true
-                addLog("🥚 Podium "..p.podium..": "..p.eggName, C.gold)
-                local ok = FirePrompt(p.prompt)
-                if ok then
+                if buyOk then
                     TotalBought = TotalBought + 1
                     statBought.Text = tostring(TotalBought)
-                    addLog("✅ Beli "..p.eggName.." dari Podium "..p.podium, C.green)
-                    SendEggBought(p.eggName, p.podium)
+                    addLog("✅ Beli " .. seed.name, C.green)
+                    SendSeedFound(seed.name, seed.rarity)
+                    gotTarget = true
                 else
-                    addLog("⚠ Gagal beli dari Podium "..p.podium, C.yellow)
+                    addLog("⚠ Gagal beli " .. seed.name, C.yellow)
                 end
-                task.wait(0.5)
             end
         end
+        return gotTarget
+    end
 
-        if not foundTarget then
-            addLog("— Tidak ada target egg, cek lagi dalam "..CHECK_DELAY.."s", C.muted)
+    while Running do
+        -- Roll
+        local ok, _ = FirePrompt(rollPrompt)
+        if ok then
+            TotalRolls = TotalRolls + 1
+            statRolls.Text = tostring(TotalRolls)
+            addLog("Roll #" .. TotalRolls, C.muted)
+        else
+            addLog("❌ Gagal roll!", C.red)
         end
 
-        statStatus.Text      = "CEK /" .. #podiums .. " PODIUM"
-        statStatus.TextColor3 = C.accent
-        task.wait(CHECK_DELAY)
+        -- Pasang listener SEGERA setelah roll
+        local bonusDetected = FindBonusObject()
+        local bonusTimes = {} -- catat waktu muncul tiap bonus
+
+        local bonusAddConn = workspace.ChildAdded:Connect(function(v)
+            for _, name in ipairs(BONUS_OBJECTS) do
+                if v.Name == name then
+                    bonusTimes[name] = os.clock()
+                    bonusDetected = name
+                    break
+                end
+            end
+        end)
+
+        local bonusRemConn = workspace.ChildRemoved:Connect(function(v)
+            for _, name in ipairs(BONUS_OBJECTS) do
+                if v.Name == name then
+                    -- Kalau hilang dalam < 0.5s = flash, batalkan deteksi
+                    local appeared = bonusTimes[name]
+                    if appeared and (os.clock() - appeared) < 0.5 then
+                        if bonusDetected == name then
+                            bonusDetected = FindBonusObject() -- cek masih ada yang lain
+                        end
+                    end
+                    break
+                end
+            end
+        end)
+
+        -- Tunggu seed muncul
+        WaitWorkspaceStable()
+        task.wait(0.2)
+        bonusAddConn:Disconnect()
+        bonusRemConn:Disconnect()
+
+        -- Cek ulang bonus sekarang kalau listener kelewatan
+        if not bonusDetected then
+            bonusDetected = FindBonusObject()
+        end
+
+        if bonusDetected then
+            -- ── LUCK MODE ──
+            addLog("🍀 LUCK: " .. bonusDetected .. "...", C.gold)
+            local finalTier = bonusDetected
+
+            -- Tunggu bonus muncul dulu kalau belum ada
+            local waitAppear = 0
+            while not FindBonusObject() and waitAppear < 5 do
+                task.wait(0.2)
+                waitAppear = waitAppear + 0.2
+            end
+
+            -- Pasang listener tier naik agar tidak kelewat
+            local tierConn = workspace.ChildAdded:Connect(function(v)
+                for _, name in ipairs(BONUS_OBJECTS) do
+                    if v.Name == name then
+                        if name ~= finalTier then
+                            addLog("⬆ " .. finalTier .. " → " .. name, C.gold)
+                        end
+                        finalTier = name
+                        break
+                    end
+                end
+            end)
+
+            -- Tunggu sampai bonus benar-benar selesai
+            -- Kalau tidak ada bonus selama 1.5s = selesai
+            local bonusWait = 0
+            local lastSeenBonus = os.clock()
+            while bonusWait < 60 do
+                task.wait(0.2)
+                bonusWait = bonusWait + 0.2
+                if FindBonusObject() then
+                    lastSeenBonus = os.clock()
+                else
+                    if os.clock() - lastSeenBonus >= 1.5 then
+                        break
+                    end
+                end
+            end
+            tierConn:Disconnect()
+
+            addLog("🍀 [" .. finalTier .. "] selesai, beli seed!", C.gold)
+            task.wait(0.3)
+            local gotTarget = BuySeedList(ScanSeeds())
+            if gotTarget then
+                addLog("✅ Luck done!", C.green)
+                task.wait(ROLL_DELAY)
+            else
+                addLog("✅ Luck done, lanjut roll!", C.green)
+            end
+        else
+            -- ── NORMAL ROLL ──
+            local gotTarget = BuySeedList(ScanSeeds())
+            if gotTarget then
+                task.wait(ROLL_DELAY)
+            else
+                addLog("— Lanjut roll", C.muted)
+                task.wait(0.3)
+            end
+        end
     end
+
+    SendStopped()
+    addLog("Dihentikan.", C.red)
 end
 
 runBtn.MouseButton1Click:Connect(function()
@@ -1036,17 +1365,13 @@ runBtn.MouseButton1Click:Connect(function()
         runBtn.Text             = "⏹  Stop"
         runBtn.BackgroundColor3 = C.red
         statusDot.TextColor3    = C.green
-        statStatus.Text         = "RUNNING"
-        statStatus.TextColor3   = C.green
         task.spawn(RunLoop)
     else
-        runBtn.Text             = "▶  Mulai Auto Buy Egg"
+        runBtn.Text             = "▶  Mulai Auto Roll"
         runBtn.BackgroundColor3 = C.green
         statusDot.TextColor3    = C.muted
-        statStatus.Text         = "IDLE"
-        statStatus.TextColor3   = C.muted
     end
 end)
 
-addLog("Siap! Pilih egg target lalu tekan Mulai.", C.muted)
-print("✅ AutoEgg v1 Loaded!")
+addLog("Siap! Pilih rarity & tekan Mulai.", C.muted)
+print("✅ AutoRoll v6 Loaded! (+ Clover/Jackpot Detection)")
