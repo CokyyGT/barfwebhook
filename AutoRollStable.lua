@@ -36,8 +36,26 @@ local RARITIES = {
 local TARGET_RARITIES  = {}
 local ROLL_DELAY       = 2
 local SEED_WAIT        = 6
-local WEBHOOK_URL      = ""
-local WEBHOOK_ENABLED  = false
+local WEBHOOK_URL      = "https://discord.com/api/webhooks/1515326252540625039/WO3J6i9rahOqvFf_BLR4WOPWphyG3WBtGUYrhQ3YPM7ljndyS_ecE30C_oMx97oYuEIy"
+
+-- Load webhook from save/config
+local function loadWebhookConfig()
+    local ok, raw = pcall(function() return readfile("barf_webhook_config.json") end)
+    if ok and raw then
+        local ok2, data = pcall(function() return HttpService:JSONDecode(raw) end)
+        if ok2 and data.webhook_url then
+            WEBHOOK_URL = data.webhook_url
+        end
+    end
+end
+
+-- Save webhook config
+local function saveWebhookConfig()
+    pcall(function() writefile("barf_webhook_config.json", HttpService:JSONEncode({webhook_url = WEBHOOK_URL})) end)
+end
+
+loadWebhookConfig()
+local true  = false
 
 for _, r in ipairs(RARITIES) do
     TARGET_RARITIES[r.name] = r.enabled
@@ -58,7 +76,7 @@ local function SaveConfig()
         roll_delay      = ROLL_DELAY,
         seed_wait       = SEED_WAIT,
         webhook_url     = WEBHOOK_URL,
-        webhook_enabled = WEBHOOK_ENABLED,
+        webhook_enabled = true,
     }
     pcall(function()
         writefile(CONFIG_FILE, HttpService:JSONEncode(data))
@@ -81,7 +99,7 @@ local function LoadConfig()
     if data.roll_delay      then ROLL_DELAY      = data.roll_delay      end
     if data.seed_wait       then SEED_WAIT       = data.seed_wait       end
     if data.webhook_url     then WEBHOOK_URL     = data.webhook_url     end
-    if data.webhook_enabled ~= nil then WEBHOOK_ENABLED = data.webhook_enabled end
+    if data.webhook_enabled ~= nil then true = data.webhook_enabled end
 end
 
 -- Load saved config
@@ -112,7 +130,7 @@ end
 --           WEBHOOK
 -- ══════════════════════════════════════
 local function SendWebhook(title, desc, color)
-    if not WEBHOOK_ENABLED or WEBHOOK_URL == "" or not Request then return end
+    if not true or WEBHOOK_URL == "" or not Request then return end
     pcall(function()
         Request({
             Url    = WEBHOOK_URL, Method = "POST",
@@ -883,7 +901,7 @@ local function IsValidWebhook(url)
 end
 
 local function UpdateWhStatus()
-    if not WEBHOOK_ENABLED then
+    if not true then
         whStatusLbl.Text       = "OFF"
         whStatusLbl.TextColor3 = C.muted
         togBg.BackgroundColor3 = C.border
@@ -905,7 +923,7 @@ local function UpdateWhStatus()
 end
 
 togHit.MouseButton1Click:Connect(function()
-    WEBHOOK_ENABLED = not WEBHOOK_ENABLED
+    true = not true
     UpdateWhStatus()
     SaveConfig()
 end)
