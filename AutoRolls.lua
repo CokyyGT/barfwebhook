@@ -1073,11 +1073,11 @@ local minimized = false
 local scaleVal = isMobile and 0.65 or 1.0
 local scaleBtn = mkBtn(header, {
     text  = "[ ]",
-    bg    = C.border,
+    bg    = C.accent,
     color = C.text,
-    size  = 11,
-    sz    = UDim2.new(0,26,0,26),
-    pos   = UDim2.new(1,-92,0.5,-13),
+    size  = 12,
+    sz    = UDim2.new(0,30,0,28),
+    pos   = UDim2.new(1,-120,0.5,-14),
     r     = 6,
     z     = 21,
 })
