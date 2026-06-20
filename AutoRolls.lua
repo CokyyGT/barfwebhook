@@ -191,6 +191,48 @@ Title.Font = Enum.Font.GothamBold
 Title.TextXAlignment = Enum.TextXAlignment.Left
 Title.Parent = Header
 
+-- Scale button
+local scaleVal = 1.0
+local ScaleBtn = Instance.new("TextButton")
+ScaleBtn.Size = UDim2.new(0, 24, 0, 24)
+ScaleBtn.Position = UDim2.new(1, -78, 0.5, -12)
+ScaleBtn.BackgroundColor3 = C.accent
+ScaleBtn.BorderSizePixel = 0
+ScaleBtn.Text = "[ ]"
+ScaleBtn.TextColor3 = C.text
+ScaleBtn.TextSize = 9
+ScaleBtn.Font = Enum.Font.GothamBold
+ScaleBtn.Parent = Header
+local ScaleCorner = Instance.new("UICorner", ScaleBtn)
+ScaleCorner.CornerRadius = UDim.new(0, 6)
+
+local UIScale = Instance.new("UIScale")
+UIScale.Parent = Main
+
+ScaleBtn.MouseButton1Click:Connect(function()
+    if scaleVal >= 1.0 then
+        scaleVal = 0.5
+    else
+        scaleVal = math.min(1.0, math.floor((scaleVal + 0.1)*10+0.5)/10)
+    end
+    UIScale.Scale = scaleVal
+end)
+
+-- Minimize button
+local minimized = false
+local MinBtn = Instance.new("TextButton")
+MinBtn.Size = UDim2.new(0, 24, 0, 24)
+MinBtn.Position = UDim2.new(1, -54, 0.5, -12)
+MinBtn.BackgroundColor3 = C.accent
+MinBtn.BorderSizePixel = 0
+MinBtn.Text = "−"
+MinBtn.TextColor3 = C.text
+MinBtn.TextSize = 12
+MinBtn.Font = Enum.Font.GothamBold
+MinBtn.Parent = Header
+local MinCorner = Instance.new("UICorner", MinBtn)
+MinCorner.CornerRadius = UDim.new(0, 6)
+
 local CloseBtn = Instance.new("TextButton")
 CloseBtn.Size = UDim2.new(0, 24, 0, 24)
 CloseBtn.Position = UDim2.new(1, -30, 0.5, -12)
@@ -203,6 +245,16 @@ CloseBtn.Font = Enum.Font.GothamBold
 CloseBtn.Parent = Header
 local CloseCorner = Instance.new("UICorner", CloseBtn)
 CloseCorner.CornerRadius = UDim.new(0, 6)
+
+MinBtn.MouseButton1Click:Connect(function()
+    minimized = not minimized
+    Content.Visible = not minimized
+    StatsFrame.Visible = not minimized
+    RunBtn.Visible = not minimized
+    Main.Size = minimized and UDim2.new(0, 300, 0, 40) or UDim2.new(0, 300, 0, 500)
+    MinBtn.Text = minimized and "+" or "−"
+end)
+
 CloseBtn.MouseButton1Click:Connect(function() SG:Destroy() end)
 
 -- Content
@@ -318,6 +370,30 @@ LogPad.PaddingLeft = UDim.new(0, 6)
 LogPad.PaddingTop = UDim.new(0, 4)
 
 local logLines = {}
+-- Drag
+local dragging = false
+Header.MouseButton1Down:Connect(function()
+    if minimized then return end
+    dragging = true
+    local startPos = Main.Position
+    local startMouse = UIS:GetMouseLocation()
+    
+    local moveConn
+    moveConn = UIS.InputChanged:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = UIS:GetMouseLocation() - startMouse
+            Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+    
+    UIS.InputEnded:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+            moveConn:Disconnect()
+        end
+    end)
+end)
+
 function logAdd(msg, color)
     table.insert(logLines, msg)
     if #logLines > 10 then table.remove(logLines, 1) end
