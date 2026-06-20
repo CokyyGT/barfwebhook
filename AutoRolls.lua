@@ -432,6 +432,11 @@ main.Size              = UDim2.new(0, UI_W, 0, 500) -- temp
 main.Position          = UDim2.new(0, 20, 0.5, -250)
 main.Parent            = sg
 corner(main, 12)
+-- UIScale
+local uiScale = Instance.new("UIScale")
+uiScale.Scale = isMobile and 0.65 or 1.0
+uiScale.Parent = main
+
 stroke(main, C.border, 1)
 
 -- Gradient overlay top
@@ -1039,32 +1044,52 @@ local runBtn = mkBtn(runWrap, {
 -- ══════════════════════════════════════
 --           DRAG
 -- ══════════════════════════════════════
-local dragging = false
-header.MouseButton1Down:Connect(function()
-    dragging = true
-    local startMouse = UIS:GetMouseLocation()
-    local startPos = main.Position
-    
-    local moveConn
-    moveConn = UIS.InputChanged:Connect(function(inp)
-        if dragging and inp.UserInputType == Enum.UserInputType.MouseMovement then
-            local delta = UIS:GetMouseLocation() - startMouse
-            main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-        end
-    end)
-    
-    local endConn
-    endConn = UIS.InputEnded:Connect(function(inp)
-        if inp.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = false
-            moveConn:Disconnect()
-            endConn:Disconnect()
-        end
-    end)
+-- Drag header
+local dragging, dragStart, startPos
+header.InputBegan:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = inp.Position
+        startPos = main.Position
+    end
+end)
+
+local dragConn = UIS.InputChanged:Connect(function(inp)
+    if dragging and inp.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = inp.Position - dragStart
+        main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+
+UIS.InputEnded:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
+    end
 end)
 
 -- ── Minimize ──
 local minimized = false
+-- Scale button
+local scaleVal = isMobile and 0.65 or 1.0
+local scaleBtn = mkBtn(header, {
+    text  = "[ ]",
+    bg    = C.border,
+    color = C.text,
+    size  = 11,
+    sz    = UDim2.new(0,26,0,26),
+    pos   = UDim2.new(1,-92,0.5,-13),
+    r     = 6,
+    z     = 21,
+})
+scaleBtn.MouseButton1Click:Connect(function()
+    if scaleVal >= 1.0 then
+        scaleVal = 0.5
+    else
+        scaleVal = math.min(1.0, math.floor((scaleVal + 0.1)*10+0.5)/10)
+    end
+    uiScale.Scale = scaleVal
+end)
+
 minBtn.MouseButton1Click:Connect(function()
     minimized = not minimized
     scroll.Visible = not minimized
